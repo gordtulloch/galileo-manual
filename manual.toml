@@ -1,0 +1,60 @@
+# Galileo User Manual - build configuration.
+# Paths are relative to this file.
+
+[manual]
+title      = "Galileo"
+subtitle   = "User Manual"
+version    = "auto"            # "auto" = read ../Galileo/pyproject.toml; override with --version
+author     = "Gord Tulloch"
+copyright  = "Copyright (c) Gord Tulloch. Galileo is free software licensed under the GPL-3.0."
+page_size  = "Letter"          # or "A4"
+toc_depth  = 2                 # 1 = chapters only, 2 = chapters + section headings
+output     = "build/Galileo-Manual.pdf"
+front_cover = "Front cover (Letter)@2x.png"
+rear_cover  = "Rear cover (Letter)@2x (2).png"
+
+[paths]
+wiki    = "../Galileo.wiki"    # chapter source (sibling repo)
+galileo = "../Galileo"         # for local copies of screenshots referenced by the wiki
+
+# Chapters, in print order. Each entry is either
+#   wiki = "<file in the wiki repo>"     or
+#   file = "<path to manual-only Markdown, relative to this repo>"
+# Optional: title = "..." (override), appendix = true.
+# Drop an image into images/ with the same file name as a wiki screenshot to override it.
+
+[[chapter]]
+wiki = "01.-Getting-Started-Guide.md"
+[[chapter]]
+wiki = "02.-Installing-INDI.md"
+[[chapter]]
+wiki = "03.-Installing-an-ASCOM-Alpaca-Bridge.md"
+[[chapter]]
+wiki = "04.-Star-Atlas.md"
+[[chapter]]
+wiki = "05.-Planning.md"
+[[chapter]]
+wiki = "06.-Imaging.md"
+[[chapter]]
+wiki = "07.-Focus.md"
+[[chapter]]
+wiki = "08.-Guiding.md"
+[[chapter]]
+wiki = "09.-Plate-Solving.md"
+[[chapter]]
+wiki = "10.-Library.md"
+[[chapter]]
+wiki = "11.-Equipment.md"
+[[chapter]]
+wiki = "12.-Science-Variable-Stars.md"
+[[chapter]]
+wiki = "14.-Built-in-Help.md"
+[[chapter]]
+wiki = "15.-Options.md"
+[[chapter]]
+wiki = "16.-AllSkyCam.md"
+[[chapter]]
+wiki = "17.-NodeConnect.md"
+[[chapter]]
+wiki = "13.-Plugin-Developers-Guide.md"
+appendix = true
