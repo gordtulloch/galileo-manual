@@ -1,3 +1,4 @@
 markdown>=3.5
 playwright>=1.45
 pypdf>=4.2
+python-docx>=1.1

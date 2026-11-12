@@ -14,47 +14,67 @@ front_cover = "Front cover (Letter)@2x.png"
 rear_cover  = "Rear cover (Letter)@2x (2).png"
 
 [paths]
-wiki    = "../Galileo.wiki"    # chapter source (sibling repo)
+docx    = "chapters"           # the manual's source documents (Word)
+wiki    = "../Galileo.wiki"    # target of "docx_tools.py export-wiki --to-wiki"
 galileo = "../Galileo"         # for local copies of screenshots referenced by the wiki
 
-# Chapters, in print order. Each entry is either
-#   wiki = "<file in the wiki repo>"     or
-#   file = "<path to manual-only Markdown, relative to this repo>"
+# Chapters, in print order. Word is the source of truth: each entry names a file in chapters/.
+#   docx = "<file in chapters/>"   (edit it in Word)
 # Optional: title = "..." (override), appendix = true.
-# Drop an image into images/ with the same file name as a wiki screenshot to override it.
+# (wiki = "..." still works for a chapter taken straight from the wiki Markdown.)
+
+# Chapters map one-to-one onto wiki articles. A chapter entry can also take a slice of an article
+# ("from"/"until" = ## heading names, "until" exclusive; give each slice an "id" and "title"), or fold other
+# articles in as sections with "append" = [...] (headings demoted one level; links to them resolve here).
+[[chapter]]
+docx = "01.-Installation.docx"
 
 [[chapter]]
-wiki = "01.-Getting-Started-Guide.md"
+docx = "02.-Getting-Started.docx"
+
 [[chapter]]
-wiki = "02.-Installing-INDI.md"
+docx = "03.-Setting-up-Equipment.docx"
+
 [[chapter]]
-wiki = "03.-Installing-an-ASCOM-Alpaca-Bridge.md"
+docx = "04.-Using-the-Star-Atlas.docx"
+
 [[chapter]]
-wiki = "04.-Star-Atlas.md"
+docx = "05.-Planning-Functions.docx"
+
 [[chapter]]
-wiki = "05.-Planning.md"
+docx = "06.-Imaging.docx"
+
 [[chapter]]
-wiki = "06.-Imaging.md"
+docx = "07.-Using-the-Focus-Screen.docx"
+
 [[chapter]]
-wiki = "07.-Focus.md"
+docx = "08.-Guiding-with-PHD2.docx"
+
 [[chapter]]
-wiki = "08.-Guiding.md"
+docx = "09.-Using-Plate-Solving.docx"
+
 [[chapter]]
-wiki = "09.-Plate-Solving.md"
+docx = "10.-The-Galileo-Image-Library.docx"
+
 [[chapter]]
-wiki = "10.-Library.md"
+docx = "14.-Built-in-Help.docx"
+
 [[chapter]]
-wiki = "11.-Equipment.md"
+docx = "17.-Using-NodeConnect.docx"
+
 [[chapter]]
-wiki = "12.-Science-Variable-Stars.md"
+docx = "18.-Using-WebConnect.docx"
+
 [[chapter]]
-wiki = "14.-Built-in-Help.md"
+docx = "19.-Using-MobileConnect-for-IOS-and-Android.docx"
+
 [[chapter]]
-wiki = "15.-Options.md"
-[[chapter]]
-wiki = "16.-AllSkyCam.md"
-[[chapter]]
-wiki = "17.-NodeConnect.md"
-[[chapter]]
-wiki = "13.-Plugin-Developers-Guide.md"
+docx = "A.-Plugin-Developers-Guide.docx"
 appendix = true
+
+# Appendix B is an intro document with the two plugin articles folded in as sections
+# (headings demoted one level; links to them resolve here).
+[[chapter]]
+docx = "B.-Plugins-Documentation.docx"
+appendix = true
+append = ["B1.-Science-Variable-Stars.docx", "B2.-AllSkyCam.docx"]

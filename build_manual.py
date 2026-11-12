@@ -61,7 +61,8 @@ def resolve_image(src: str, galileo: Path, refresh: bool) -> str:
     GitHub URLs) -> downloaded cache.  Unresolvable images are left as-is.
     """
     if not src.startswith(("http://", "https://")):
-        return src
+        local = Path(urllib.parse.unquote(src))
+        return local.as_uri() if local.is_absolute() and local.is_file() else src
     path = urllib.parse.unquote(urllib.parse.urlparse(src).path)
     base = Path(path).name
 
@@ -117,20 +118,26 @@ def split_title(text: str, fallback: str) -> tuple[str, str]:
     m = re.search(r"^#\s+(.+?)\s*$", text, flags=re.M)
     if not m:
         return fallback, text
-    title = re.sub(r"^\d+\.\s*", "", m.group(1)).strip()
+    title = re.sub(r"^(?:\d+|[A-Z]\d*)\.\s+", "", m.group(1)).strip()  # "06. ", "A. ", "B1. "
     return title, text[: m.start()] + text[m.end():]
 
 
 class Chapter:
     def __init__(self, entry: dict, index: int, appendix_index: int, cfg_paths: dict):
         self.entry = entry
-        if "wiki" in entry:
+        if "docx" in entry:  # Word is the source of truth: chapters/<name>.docx
+            self.source = resolve_dir(cfg_paths.get("docx", "chapters")) / entry["docx"]
+            self.page_name = Path(entry["docx"]).stem
+        elif "wiki" in entry:
             self.source = resolve_dir(cfg_paths["wiki"]) / entry["wiki"]
             self.page_name = Path(entry["wiki"]).stem
         else:
             self.source = ROOT / entry["file"]
             self.page_name = Path(entry["file"]).stem
-        self.slug = "ch-" + gh_slug(self.page_name.replace(".", ""))
+        self.slug = "ch-" + gh_slug(entry.get("id", self.page_name).replace(".", ""))
+        self.raw = ""
+        self.appended_pages: list[str] = []
+        self.anchors: set[str] = set()
         self.appendix = bool(entry.get("appendix"))
         self.label = (
             f"Appendix {chr(ord('A') + appendix_index)}" if self.appendix else f"Chapter {index}"
@@ -140,14 +147,77 @@ class Chapter:
         self.headings: list[tuple[int, str, str]] = []  # (level, id, text)
 
 
-def render_chapter(ch: Chapter, page_map: dict[str, str], galileo: Path, refresh: bool) -> None:
-    raw = ch.source.read_text(encoding="utf-8")
-    title, raw = split_title(clean_source(raw), ch.source.stem)
-    ch.title = ch.entry.get("title", title)
+def slice_by_heading(text: str, start: str | None, stop: str | None, source: str) -> str:
+    """Keep the part of `text` from the `## start` heading up to (not including) `## stop`."""
+    lines = text.split("\n")
 
+    def find(name: str) -> int:
+        for i, line in enumerate(lines):
+            m = re.match(r"^##\s+(.+?)\s*$", line)
+            if m and m.group(1).strip().lower() == name.strip().lower():
+                return i
+        raise SystemExit(f"{source}: no '## {name}' heading to split on")
+
+    a = find(start) if start else 0
+    b = find(stop) if stop else len(lines)
+    return "\n".join(lines[a:b])
+
+
+def demote_headings(text: str) -> str:
+    """Push every Markdown heading down one level (outside code fences)."""
+    out, fenced = [], False
+    for line in text.split("\n"):
+        if re.match(r"^\s*(```|~~~)", line):
+            fenced = not fenced
+        elif not fenced and re.match(r"^#{1,5}\s", line):
+            line = "#" + line
+        out.append(line)
+    return "\n".join(out)
+
+
+def read_source(path: Path) -> str:
+    """Markdown text of a chapter source: a .docx is converted with pandoc, anything else is read."""
+    if path.suffix.lower() == ".docx":
+        import docx_tools
+
+        return docx_tools.docx_to_md(path, BUILD / "media" / path.stem)
+    return path.read_text(encoding="utf-8")
+
+
+def load_chapter(ch: Chapter, paths: dict) -> None:
+    """Read the source, apply from/until slicing and record the heading anchors it holds."""
+    full = clean_source(read_source(ch.source))
+    title, body = split_title(full, ch.source.stem)
+    e = ch.entry
+    if e.get("from") or e.get("until"):
+        body = slice_by_heading(body, e.get("from"), e.get("until"), ch.source.name)
+    ch.title = e.get("title", title)
+    # "append": further wiki articles folded in as sections of this chapter.
+    for name in e.get("append", []):
+        src = (resolve_dir(paths.get("docx", "chapters")) if name.endswith(".docx") else resolve_dir(paths["wiki"])) / name
+        sub_title, sub_body = split_title(clean_source(read_source(src)), src.stem)
+        ch.appended_pages.append(Path(name).stem)
+        body += f"\n\n## {sub_title}\n\n" + demote_headings(sub_body)
+    ch.raw = body
+    ch.anchors = {gh_slug(m.group(1)) for m in re.finditer(r"^#{2,6}\s+(.+?)\s*$", body, flags=re.M)}
+
+
+def render_chapter(ch: Chapter, page_map: dict[str, list[Chapter]], galileo: Path, refresh: bool) -> None:
     md = new_markdown()
-    body = md.convert(raw)
+    body = md.convert(ch.raw)
     pfx = ch.slug + "--"
+
+    def target_id(page: str, frag: str) -> str | None:
+        """Chapter-namespaced id for page#frag (or the chapter itself), or None if not in the manual."""
+        group = page_map.get(page)
+        if not group:
+            return None
+        if not frag:
+            return group[0].slug
+        for c in group:  # a split article: pick the chapter that holds the heading
+            if frag in c.anchors:
+                return f"{c.slug}--{frag}"
+        return f"{group[0].slug}--{frag}"
 
     # Namespace heading ids per chapter and record them for the TOC.
     def head(m: re.Match) -> str:
@@ -162,14 +232,15 @@ def render_chapter(ch: Chapter, page_map: dict[str, str], galileo: Path, refresh
     def href(m: re.Match) -> str:
         target = html.unescape(m.group(1))
         if target.startswith("#"):
-            return f'href="#{pfx}{target[1:]}"'
+            if target[1:] in ch.anchors:
+                return f'href="#{pfx}{target[1:]}"'
+            tid = target_id(ch.page_name, target[1:])  # may live in a sibling chapter of a split article
+            return f'href="#{tid}"' if tid else f'href="#{pfx}{target[1:]}"'
         if re.match(r"^[a-z][a-z0-9+.\-]*:", target, flags=re.I):
             return m.group(0)
         page, _, frag = target.partition("#")
-        page = urllib.parse.unquote(page)
-        if page in page_map:
-            return f'href="#{page_map[page]}--{frag}"' if frag else f'href="#{page_map[page]}"'
-        return 'data-unlinked="1"'  # page not in the manual; neutralised below
+        tid = target_id(urllib.parse.unquote(page), frag)
+        return f'href="#{tid}"' if tid else 'data-unlinked="1"'  # not in the manual; neutralised below
 
     body = re.sub(r'href="([^"]*)"', href, body)
     body = re.sub(r'<a data-unlinked="1">(.*?)</a>', r"\1", body, flags=re.S)
@@ -356,7 +427,7 @@ def main() -> int:
     entries = cfg["chapter"]
     if args.only:
         wanted = tuple(x.strip() for x in args.only.split(","))
-        entries = [e for e in entries if Path(e.get("wiki", e.get("file", ""))).name.startswith(wanted)]
+        entries = [e for e in entries if Path(e.get("docx", e.get("wiki", e.get("file", "")))).name.startswith(wanted)]
         if not entries:
             raise SystemExit(f"--only {args.only!r} matched no chapters")
 
@@ -368,7 +439,12 @@ def main() -> int:
             a += 1
         else:
             n += 1
-    page_map = {c.page_name: c.slug for c in chapters}
+    for ch in chapters:
+        load_chapter(ch, cfg["paths"])
+    page_map: dict[str, list[Chapter]] = {}
+    for c in chapters:
+        for name in [c.page_name, *c.appended_pages]:
+            page_map.setdefault(name, []).append(c)
 
     BUILD.mkdir(exist_ok=True)
     for ch in chapters:
